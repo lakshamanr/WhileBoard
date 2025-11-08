@@ -10,6 +10,8 @@
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - ASPNETCORE_URLS=http://+:5000
+      - DB_PASSWORD=P@ssword123
+      - JWT_KEY=super secret key
     networks:
       - appnet
 
