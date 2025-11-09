@@ -8,10 +8,11 @@ import html2canvas from 'html2canvas';
 @Component({
   selector: 'app-board',
   templateUrl: './board.component.html',
-  styleUrls: ['./board.component.scss']
+  styleUrls: ['./board.component.scss'],
+  standalone: false
 })
 export class BoardComponent implements OnInit, OnDestroy {
-  private canvas: fabric.Canvas;
+  private canvas!: fabric.Canvas;
   private isPanning: boolean = false;
   private lastPosX: number = 0;
   private lastPosY: number = 0;
@@ -39,14 +40,13 @@ export class BoardComponent implements OnInit, OnDestroy {
     this.canvas.on('object:added', this.onObjectAdded.bind(this));
     this.canvas.on('object:modified', this.onObjectModified.bind(this));
     this.canvas.on('object:removed', this.onObjectRemoved.bind(this));
-    this.canvas.on('drop', this.onDrop.bind(this));
 
     this.signalrService.addElementListener((element: any) => {
-      fabric.util.enlivenObjects([element], (objects: any) => {
-        objects.forEach((obj: any) => {
+      fabric.util.enlivenObjects([element], (objects: fabric.Object[]) => {
+        objects.forEach((obj: fabric.Object) => {
           this.canvas.add(obj);
         });
-      });
+      }, '');
     });
 
     this.saveState();
@@ -178,11 +178,13 @@ export class BoardComponent implements OnInit, OnDestroy {
     if (this.isPanning) {
       const e = opt.e;
       const vpt = this.canvas.viewportTransform;
-      vpt[4] += e.clientX - this.lastPosX;
-      vpt[5] += e.clientY - this.lastPosY;
-      this.canvas.requestRenderAll();
-      this.lastPosX = e.clientX;
-      this.lastPosY = e.clientY;
+      if (vpt) {
+        vpt[4] += e.clientX - this.lastPosX;
+        vpt[5] += e.clientY - this.lastPosY;
+        this.canvas.requestRenderAll();
+        this.lastPosX = e.clientX;
+        this.lastPosY = e.clientY;
+      }
     }
   }
 
@@ -192,37 +194,18 @@ export class BoardComponent implements OnInit, OnDestroy {
   }
 
   private onObjectAdded(opt: fabric.IEvent): void {
-    this.signalrService.sendElement(opt.target.toObject(), this.boardId);
+    if (opt.target) {
+      this.signalrService.sendElement(opt.target.toObject(), this.boardId);
+    }
   }
 
   private onObjectModified(opt: fabric.IEvent): void {
-    this.signalrService.sendElement(opt.target.toObject(), this.boardId);
+    if (opt.target) {
+      this.signalrService.sendElement(opt.target.toObject(), this.boardId);
+    }
   }
 
   private onObjectRemoved(opt: fabric.IEvent): void {
     // Send remove event to server
-  }
-
-  private onDrop(opt: fabric.IEvent<DragEvent>): void {
-    opt.e.preventDefault();
-    const files = opt.e.dataTransfer.files;
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      if (file.type.match('image.*')) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const imageUrl = (e.target as any).result;
-          fabric.Image.fromURL(imageUrl, (img: any) => {
-            img.set({
-              left: opt.e.offsetX,
-              top: opt.e.offsetY
-            });
-            this.canvas.add(img);
-            this.saveState();
-          });
-        };
-        reader.readAsDataURL(file);
-      }
-    }
   }
 }
