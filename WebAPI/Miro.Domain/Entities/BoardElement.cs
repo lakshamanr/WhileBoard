@@ -1,17 +1,15 @@
-using System;
-
 namespace Miro.Domain.Entities
 {
-    public abstract class BoardElement
+    public class BoardElement
     {
         public Guid Id { get; set; }
         public Guid BoardId { get; set; }
-        public Board? Board { get; set; }
-        public int PositionX { get; set; }
-        public int PositionY { get; set; }
-        public int Width { get; set; }
-        public int Height { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public DateTime UpdatedAt { get; set; }
+        public string Type { get; set; }
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public string Content { get; set; }
+        public Board Board { get; set; }
     }
 }

@@ -1,0 +1,15 @@
+<div class="dashboard-container">
+  <h2>Dashboard</h2>
+  <div class="create-board">
+    <input type="text" [(ngModel)]="newBoardName" placeholder="Enter board name">
+    <button (click)="createBoard()">Create Board</button>
+  </div>
+  <div class="board-list">
+    <h3>Your Boards</h3>
+    <ul>
+      <li *ngFor="let board of boards">
+        <a [routerLink]="['/board', board.id]">{{ board.name }}</a>
+      </li>
+    </ul>
+  </div>
+</div>

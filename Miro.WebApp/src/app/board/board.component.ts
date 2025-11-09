@@ -1,158 +1,82 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { fabric } from 'fabric';
-import { Subscription, timer } from 'rxjs';
 import { SignalrService } from '../shared/services/signalr.service';
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
+import { ActivatedRoute } from '@angular/router';
 
 @Component({
   selector: 'app-board',
   templateUrl: './board.component.html',
-  styleUrls: ['./board.component.scss'],
-  standalone: false
+  styleUrls: ['./board.component.scss']
 })
 export class BoardComponent implements OnInit, OnDestroy {
   private canvas!: fabric.Canvas;
-  private isPanning: boolean = false;
-  private lastPosX: number = 0;
-  private lastPosY: number = 0;
-  private boardId = 'test-board'; // Replace with actual board ID
-  private history: any[] = [];
-  private historyIndex = -1;
-  private autosaveSubscription!: Subscription;
+  private boardId!: string;
 
-  constructor(private signalrService: SignalrService) { }
+  constructor(
+    private signalrService: SignalrService,
+    private route: ActivatedRoute
+  ) { }
 
   ngOnInit(): void {
-    this.signalrService.startConnection();
-    this.signalrService.joinBoard(this.boardId);
-
-    this.canvas = new fabric.Canvas('canvas', {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      backgroundColor: '#f0f0f0'
+    this.route.params.subscribe(params => {
+      this.boardId = params['id'];
+      this.signalrService.startConnection(this.boardId);
+      this.signalrService.newElementReceived.subscribe(element => {
+        const newElement = new fabric.Object(element);
+        this.canvas.add(newElement);
+      });
+      this.signalrService.updatedElementReceived.subscribe(element => {
+        // Find and update the element on the canvas
+      });
+      this.signalrService.deletedElementReceived.subscribe(elementId => {
+        // Find and delete the element from the canvas
+      });
+      this.signalrService.undoReceived.subscribe(() => {
+        // Implement undo functionality
+      });
+      this.signalrService.redoReceived.subscribe(() => {
+        // Implement redo functionality
+      });
     });
 
+    this.canvas = new fabric.Canvas('canvas', {
+      isDrawingMode: false,
+      selection: true
+    });
+
+    this.canvas.on('object:added', this.onObjectAdded.bind(this));
+    this.canvas.on('object:modified', this.onObjectModified.bind(this));
+    this.canvas.on('object:removed', this.onObjectRemoved.bind(this));
     this.canvas.on('mouse:wheel', this.onMouseWheel.bind(this));
     this.canvas.on('mouse:down', this.onMouseDown.bind(this));
     this.canvas.on('mouse:move', this.onMouseMove.bind(this));
     this.canvas.on('mouse:up', this.onMouseUp.bind(this));
-    this.canvas.on('object:added', this.onObjectAdded.bind(this));
-    this.canvas.on('object:modified', this.onObjectModified.bind(this));
-    this.canvas.on('object:removed', this.onObjectRemoved.bind(this));
-
-    this.signalrService.addElementListener((element: any) => {
-      fabric.util.enlivenObjects([element], (objects: fabric.Object[]) => {
-        objects.forEach((obj: fabric.Object) => {
-          this.canvas.add(obj);
-        });
-      }, '');
-    });
-
-    this.saveState();
-    this.autosaveSubscription = timer(30000, 30000).subscribe(() => this.saveBoard());
   }
 
   ngOnDestroy(): void {
-    if (this.autosaveSubscription) {
-      this.autosaveSubscription.unsubscribe();
+    this.canvas.off('object:added');
+    this.canvas.off('mouse:wheel');
+    this.canvas.off('mouse:down');
+    this.canvas.off('mouse:move');
+    this.canvas.off('mouse:up');
+  }
+
+  private onObjectAdded(opt: fabric.IEvent): void {
+    if (opt.target) {
+      this.signalrService.createElement(opt.target.toObject(), this.boardId);
     }
   }
 
-  public addStickyNote(): void {
-    const stickyNote = new fabric.IText('New Sticky Note', {
-      left: 100,
-      top: 100,
-      backgroundColor: '#ffffa8',
-      padding: 10
-    });
-    this.canvas.add(stickyNote);
-    this.saveState();
-  }
-
-  public addRectangle(): void {
-    const rect = new fabric.Rect({
-      left: 100,
-      top: 100,
-      fill: 'red',
-      width: 200,
-      height: 100
-    });
-    this.canvas.add(rect);
-    this.saveState();
-  }
-
-  public addCircle(): void {
-    const circle = new fabric.Circle({
-      left: 100,
-      top: 100,
-      fill: 'blue',
-      radius: 50
-    });
-    this.canvas.add(circle);
-    this.saveState();
-  }
-
-  public addText(): void {
-    const text = new fabric.IText('New Text', {
-      left: 100,
-      top: 100,
-      fontSize: 20,
-      fill: '#000000'
-    });
-    this.canvas.add(text);
-    this.saveState();
-  }
-
-  public toggleDrawingMode(): void {
-    this.canvas.isDrawingMode = !this.canvas.isDrawingMode;
-  }
-
-  public undo(): void {
-    if (this.historyIndex > 0) {
-      this.historyIndex--;
-      this.canvas.loadFromJSON(this.history[this.historyIndex], this.canvas.renderAll.bind(this.canvas));
+  private onObjectModified(opt: fabric.IEvent): void {
+    if (opt.target) {
+      this.signalrService.updateElement(opt.target.toObject(), this.boardId);
     }
   }
 
-  public redo(): void {
-    if (this.historyIndex < this.history.length - 1) {
-      this.historyIndex++;
-      this.canvas.loadFromJSON(this.history[this.historyIndex], this.canvas.renderAll.bind(this.canvas));
+  private onObjectRemoved(opt: fabric.IEvent): void {
+    if (opt.target) {
+      this.signalrService.deleteElement((opt.target as any).id, this.boardId);
     }
-  }
-
-  public exportAsJPG(): void {
-    const dataURL = this.canvas.toDataURL({
-      format: 'jpeg',
-      quality: 0.8
-    });
-    const link = document.createElement('a');
-    link.download = 'board.jpg';
-    link.href = dataURL;
-    link.click();
-  }
-
-  public exportAsPDF(): void {
-    const canvasElement = document.querySelector("#canvas") as HTMLElement;
-    if (canvasElement) {
-      html2canvas(canvasElement).then((canvas: any) => {
-        const contentDataURL = canvas.toDataURL('image/png')
-        let pdf = new jsPDF('l', 'cm', 'a4'); // A4 size page of PDF
-        pdf.addImage(contentDataURL, 'PNG', 0, 0, 29.7, 21.0);
-        pdf.save('board.pdf');
-      });
-    }
-  }
-
-  private saveState(): void {
-    this.history = this.history.slice(0, this.historyIndex + 1);
-    this.history.push(this.canvas.toObject());
-    this.historyIndex++;
-  }
-
-  private saveBoard(): void {
-    // Save board state to database
   }
 
   private onMouseWheel(opt: fabric.IEvent<WheelEvent>): void {
@@ -165,6 +89,10 @@ export class BoardComponent implements OnInit, OnDestroy {
     opt.e.preventDefault();
     opt.e.stopPropagation();
   }
+
+  private isPanning = false;
+  private lastPosX = 0;
+  private lastPosY = 0;
 
   private onMouseDown(opt: fabric.IEvent<MouseEvent>): void {
     if (opt.e.altKey === true) {
@@ -190,22 +118,84 @@ export class BoardComponent implements OnInit, OnDestroy {
 
   private onMouseUp(opt: fabric.IEvent<MouseEvent>): void {
     this.isPanning = false;
-    this.saveState();
   }
 
-  private onObjectAdded(opt: fabric.IEvent): void {
-    if (opt.target) {
-      this.signalrService.sendElement(opt.target.toObject(), this.boardId);
-    }
+  addStickyNote(): void {
+    const note = new fabric.Rect({
+      left: 100,
+      top: 100,
+      fill: 'yellow',
+      width: 150,
+      height: 100,
+      stroke: 'black',
+      strokeWidth: 1
+    });
+    this.canvas.add(note);
   }
 
-  private onObjectModified(opt: fabric.IEvent): void {
-    if (opt.target) {
-      this.signalrService.sendElement(opt.target.toObject(), this.boardId);
-    }
+  addRectangle(): void {
+    const rect = new fabric.Rect({
+      left: 100,
+      top: 100,
+      fill: 'transparent',
+      width: 150,
+      height: 100,
+      stroke: 'black',
+      strokeWidth: 1
+    });
+    this.canvas.add(rect);
   }
 
-  private onObjectRemoved(opt: fabric.IEvent): void {
-    // Send remove event to server
+  addCircle(): void {
+    const circle = new fabric.Circle({
+      left: 100,
+      top: 100,
+      fill: 'transparent',
+      radius: 50,
+      stroke: 'black',
+      strokeWidth: 1
+    });
+    this.canvas.add(circle);
+  }
+
+  addText(): void {
+    const text = new fabric.Textbox('New Text', {
+      left: 100,
+      top: 100,
+      width: 150,
+      fontSize: 20
+    });
+    this.canvas.add(text);
+  }
+
+  toggleDrawingMode(): void {
+    this.canvas.isDrawingMode = !this.canvas.isDrawingMode;
+  }
+
+  addConnector(): void {
+    // Implement connector functionality
+  }
+
+  undo(): void {
+    this.signalrService.undo(this.boardId);
+  }
+
+  redo(): void {
+    this.signalrService.redo(this.boardId);
+  }
+
+  exportAsJPG(): void {
+    const dataURL = this.canvas.toDataURL({
+      format: 'jpeg',
+      quality: 0.8
+    });
+    const link = document.createElement('a');
+    link.href = dataURL;
+    link.download = 'board.jpg';
+    link.click();
+  }
+
+  exportAsPDF(): void {
+    // Implement PDF export functionality
   }
 }

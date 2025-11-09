@@ -10,9 +10,29 @@ namespace Miro.API.Hubs
             await Groups.AddToGroupAsync(Context.ConnectionId, boardId);
         }
 
-        public async Task SendElement(object element, string boardId)
+        public async Task CreateElement(object element, string boardId)
         {
-            await Clients.Group(boardId).SendAsync("ReceiveElement", element);
+            await Clients.Group(boardId).SendAsync("ReceiveNewElement", element);
+        }
+
+        public async Task UpdateElement(object element, string boardId)
+        {
+            await Clients.Group(boardId).SendAsync("ReceiveUpdatedElement", element);
+        }
+
+        public async Task DeleteElement(string elementId, string boardId)
+        {
+            await Clients.Group(boardId).SendAsync("ReceiveDeletedElement", elementId);
+        }
+
+        public async Task Undo(string boardId)
+        {
+            await Clients.Group(boardId).SendAsync("ReceiveUndo");
+        }
+
+        public async Task Redo(string boardId)
+        {
+            await Clients.Group(boardId).SendAsync("ReceiveRedo");
         }
     }
 }
