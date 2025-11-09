@@ -6,11 +6,12 @@ namespace Miro.Domain.Entities
     {
         public Guid Id { get; set; }
         public Guid BoardId { get; set; }
-        public Board Board { get; set; }
-        public string Type { get; set; }
-        public int X { get; set; }
-        public int Y { get; set; }
+        public Board? Board { get; set; }
+        public int PositionX { get; set; }
+        public int PositionY { get; set; }
         public int Width { get; set; }
         public int Height { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
     }
 }
