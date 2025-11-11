@@ -1,0 +1,92 @@
+<div class="whiteboard-container">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="tool-group">
+      <button (click)="selectTool('select')" [class.active]="currentTool === 'select'" title="Select (V)">
+        Select
+      </button>
+      <button (click)="selectTool('rectangle')" [class.active]="currentTool === 'rectangle'" title="Rectangle (R)">
+        Rectangle
+      </button>
+      <button (click)="selectTool('circle')" [class.active]="currentTool === 'circle'" title="Circle (C)">
+        Circle
+      </button>
+      <button (click)="selectTool('line')" [class.active]="currentTool === 'line'" title="Line (L)">
+        Line
+      </button>
+      <button (click)="selectTool('text')" [class.active]="currentTool === 'text'" title="Text (T)">
+        Text
+      </button>
+      <button (click)="selectTool('sticky')" [class.active]="currentTool === 'sticky'" title="Sticky Note (S)">
+        Sticky
+      </button>
+      <button (click)="selectTool('pen')" [class.active]="currentTool === 'pen'" title="Pen (P)">
+        Pen
+      </button>
+      <button (click)="selectTool('connector')" [class.active]="currentTool === 'connector'" title="Connector">
+        Connector
+      </button>
+    </div>
+
+    <div class="tool-group">
+      <button (click)="undo()" [disabled]="historyIndex <= 0" title="Undo (Ctrl+Z)">
+        Undo
+      </button>
+      <button (click)="redo()" [disabled]="historyIndex >= history.length - 1" title="Redo (Ctrl+Shift+Z)">
+        Redo
+      </button>
+    </div>
+
+    <div class="tool-group">
+      <button (click)="copy()" [disabled]="selectedElements.length === 0" title="Copy (Ctrl+C)">
+        Copy
+      </button>
+      <button (click)="paste()" [disabled]="clipboard.length === 0" title="Paste (Ctrl+V)">
+        Paste
+      </button>
+      <button (click)="deleteSelected()" [disabled]="selectedElements.length === 0" title="Delete (Del)">
+        Delete
+      </button>
+    </div>
+
+    <div class="tool-group">
+      <button (click)="zoomOut()" title="Zoom Out (Ctrl+-)">-</button>
+      <span class="zoom-level">{{ (zoom * 100).toFixed(0) }}%</span>
+      <button (click)="zoomIn()" title="Zoom In (Ctrl++)">+</button>
+      <button (click)="resetZoom()" title="Reset Zoom">Reset</button>
+    </div>
+
+    <div class="tool-group">
+      <span class="element-count">{{ elements.length }} elements</span>
+      <span class="selected-count" *ngIf="selectedElements.length > 0">
+        {{ selectedElements.length }} selected
+      </span>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <canvas
+    #canvas
+    class="whiteboard-canvas"
+    (mousedown)="onMouseDown($event)"
+    (mousemove)="onMouseMove($event)"
+    (mouseup)="onMouseUp($event)"
+    (wheel)="onWheel($event)"
+  ></canvas>
+
+  <!-- Help panel -->
+  <div class="help-panel">
+    <h4>Keyboard Shortcuts</h4>
+    <ul>
+      <li><strong>Ctrl+Z</strong> - Undo</li>
+      <li><strong>Ctrl+Shift+Z</strong> - Redo</li>
+      <li><strong>Ctrl+C</strong> - Copy</li>
+      <li><strong>Ctrl+V</strong> - Paste</li>
+      <li><strong>Ctrl+A</strong> - Select All</li>
+      <li><strong>Del</strong> - Delete</li>
+      <li><strong>Ctrl++</strong> - Zoom In</li>
+      <li><strong>Ctrl+-</strong> - Zoom Out</li>
+      <li><strong>Shift+Drag</strong> - Pan</li>
+    </ul>
+  </div>
+</div>

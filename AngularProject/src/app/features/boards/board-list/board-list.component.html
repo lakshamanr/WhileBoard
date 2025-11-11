@@ -1,0 +1,91 @@
+<div class="boards-container">
+  <header class="boards-header">
+    <h1>My Whiteboards</h1>
+    <button class="btn-create" (click)="showCreateDialog = true">+ New Board</button>
+  </header>
+
+  <div class="boards-content" *ngIf="!loading">
+    <section class="boards-section">
+      <h2>My Boards</h2>
+      <div class="boards-grid">
+        <div class="board-card" *ngFor="let board of myBoards" (click)="openBoard(board.id)">
+          <div class="board-thumbnail">
+            <img [src]="board.thumbnailUrl || '/assets/default-board.png'" alt="{{ board.name }}" />
+          </div>
+          <div class="board-info">
+            <h3>{{ board.name }}</h3>
+            <p>{{ board.description }}</p>
+            <div class="board-meta">
+              <span>{{ board.elementCount }} elements</span>
+              <span>Updated {{ board.updatedAt | date:'short' }}</span>
+            </div>
+          </div>
+          <button class="btn-delete" (click)="deleteBoard(board, $event)">Delete</button>
+        </div>
+
+        <div class="board-card-empty" *ngIf="myBoards.length === 0">
+          <p>No boards yet. Create your first board!</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="boards-section" *ngIf="sharedBoards.length > 0">
+      <h2>Shared With Me</h2>
+      <div class="boards-grid">
+        <div class="board-card" *ngFor="let board of sharedBoards" (click)="openBoard(board.id)">
+          <div class="board-thumbnail">
+            <img [src]="board.thumbnailUrl || '/assets/default-board.png'" alt="{{ board.name }}" />
+          </div>
+          <div class="board-info">
+            <h3>{{ board.name }}</h3>
+            <p>{{ board.description }}</p>
+            <div class="board-meta">
+              <span>By {{ board.ownerName }}</span>
+              <span>{{ board.elementCount }} elements</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="loading" *ngIf="loading">
+    <p>Loading boards...</p>
+  </div>
+</div>
+
+<!-- Create Board Dialog -->
+<div class="dialog-overlay" *ngIf="showCreateDialog" (click)="showCreateDialog = false">
+  <div class="dialog" (click)="$event.stopPropagation()">
+    <h2>Create New Board</h2>
+
+    <div class="form-group">
+      <label for="boardName">Board Name</label>
+      <input
+        type="text"
+        id="boardName"
+        [(ngModel)]="newBoardName"
+        placeholder="Enter board name"
+        class="form-control"
+      />
+    </div>
+
+    <div class="form-group">
+      <label for="boardDescription">Description (optional)</label>
+      <textarea
+        id="boardDescription"
+        [(ngModel)]="newBoardDescription"
+        placeholder="Enter board description"
+        class="form-control"
+        rows="3"
+      ></textarea>
+    </div>
+
+    <div class="dialog-actions">
+      <button class="btn-secondary" (click)="showCreateDialog = false">Cancel</button>
+      <button class="btn-primary" (click)="createBoard()" [disabled]="!newBoardName.trim()">
+        Create Board
+      </button>
+    </div>
+  </div>
+</div>
