@@ -70,3 +70,6 @@ desktop.ini
 
 # Docker
 .dockerignore
+/electron-app/api
+/electron-app/dist-electron
+/electron-app/frontend
