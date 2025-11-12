@@ -41,7 +41,7 @@ echo =========================================
 cd ..\WebAPI\CollaborativeWhiteboard.API
 
 echo Publishing .NET API for %RUNTIME%...
-dotnet publish -c Release -r %RUNTIME% --self-contained true /p:PublishSingleFile=true -o .\publish
+dotnet publish -c Release -r %RUNTIME% --self-contained true -o .\publish
 
 if not exist ".\publish\CollaborativeWhiteboard.API.exe" (
     echo Error: .NET API publish failed!

@@ -44,7 +44,7 @@ Write-Host "=========================================" -ForegroundColor Green
 Set-Location -Path "..\WebAPI\CollaborativeWhiteboard.API"
 
 Write-Host "Publishing .NET API for $runtime..." -ForegroundColor Yellow
-dotnet publish -c Release -r $runtime --self-contained true /p:PublishSingleFile=true -o .\publish
+dotnet publish -c Release -r $runtime --self-contained true -o .\publish
 
 if (-not (Test-Path ".\publish\CollaborativeWhiteboard.API.exe")) {
     Write-Host "Error: .NET API publish failed!" -ForegroundColor Red
