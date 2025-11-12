@@ -31,7 +31,7 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   boardId: string = '';
   elements: BoardElement[] = [];
   selectedElements: BoardElement[] = [];
-  currentTool: 'select' | 'rectangle' | 'circle' | 'text' | 'sticky' | 'pen' | 'line' | 'connector' = 'select';
+  currentTool: 'select' | 'rectangle' | 'circle' | 'text' | 'sticky' | 'pen' | 'line' | 'connector' | 'frame' = 'select';
 
   // Canvas state
   zoom: number = 1;
@@ -63,6 +63,16 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   private hoveredElement?: BoardElement;
   private isDraggingFromHandle: boolean = false;
   private dragFromHandle?: { element: BoardElement; position: Point };
+
+  // Snapping and alignment
+  private snapEnabled: boolean = true;
+  private snapThreshold: number = 10;
+  private alignmentGuides: Array<{ type: 'vertical' | 'horizontal'; position: number }> = [];
+
+  // Mini-map
+  private minimapSize: number = 150;
+  private minimapPadding: number = 20;
+  private showMinimap: boolean = true;
 
   constructor(
     private route: ActivatedRoute,
@@ -286,15 +296,24 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     }
 
     if (this.isDragging && this.selectedElements.length > 0) {
-      const dx = point.x - this.startPoint.x;
-      const dy = point.y - this.startPoint.y;
+      let dx = point.x - this.startPoint.x;
+      let dy = point.y - this.startPoint.y;
+
+      // Apply snapping if enabled
+      if (this.snapEnabled) {
+        const snapResult = this.calculateSnapping(this.selectedElements[0], dx, dy);
+        dx = snapResult.dx;
+        dy = snapResult.dy;
+        this.alignmentGuides = snapResult.guides;
+      }
 
       this.selectedElements.forEach(element => {
         element.x += dx;
         element.y += dy;
       });
 
-      this.startPoint = point;
+      this.startPoint.x += dx;
+      this.startPoint.y += dy;
       this.render();
       this.autoSave$.next();
       return;
@@ -347,9 +366,11 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
     if (this.isDragging) {
       this.isDragging = false;
+      this.alignmentGuides = []; // Clear alignment guides
       // Update elements on server
       await this.updateSelectedElements();
       this.saveHistoryState();
+      this.render();
       return;
     }
 
@@ -377,8 +398,19 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   onWheel(event: WheelEvent): void {
     event.preventDefault();
     const delta = event.deltaY > 0 ? 0.9 : 1.1;
+    const oldZoom = this.zoom;
     this.zoom *= delta;
-    this.zoom = Math.max(0.1, Math.min(5, this.zoom));
+    this.zoom = Math.max(0.05, Math.min(10, this.zoom)); // Increased zoom range for infinite canvas
+
+    // Zoom towards mouse position
+    const rect = this.canvasRef.nativeElement.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+
+    // Adjust pan to zoom towards cursor
+    this.panX = mouseX - (mouseX - this.panX) * (this.zoom / oldZoom);
+    this.panY = mouseY - (mouseY - this.panY) * (this.zoom / oldZoom);
+
     this.render();
   }
 
@@ -392,13 +424,13 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   // Zoom controls
   zoomIn(): void {
     this.zoom *= 1.2;
-    this.zoom = Math.min(5, this.zoom);
+    this.zoom = Math.min(10, this.zoom);
     this.render();
   }
 
   zoomOut(): void {
     this.zoom *= 0.8;
-    this.zoom = Math.max(0.1, this.zoom);
+    this.zoom = Math.max(0.05, this.zoom);
     this.render();
   }
 
@@ -659,6 +691,95 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Snapping and alignment methods
+  private calculateSnapping(element: BoardElement, dx: number, dy: number): { dx: number; dy: number; guides: Array<{ type: 'vertical' | 'horizontal'; position: number }> } {
+    const guides: Array<{ type: 'vertical' | 'horizontal'; position: number }> = [];
+
+    // Calculate new position
+    const newX = element.x + dx;
+    const newY = element.y + dy;
+    const newCenterX = newX + element.width / 2;
+    const newCenterY = newY + element.height / 2;
+    const newRight = newX + element.width;
+    const newBottom = newY + element.height;
+
+    let snappedDx = dx;
+    let snappedDy = dy;
+    let minXDist = Infinity;
+    let minYDist = Infinity;
+
+    // Check alignment with other elements
+    for (const other of this.elements) {
+      if (this.selectedElements.includes(other)) continue;
+
+      const otherCenterX = other.x + other.width / 2;
+      const otherCenterY = other.y + other.height / 2;
+      const otherRight = other.x + other.width;
+      const otherBottom = other.y + other.height;
+
+      // Vertical alignment checks
+      // Left edges
+      const leftDist = Math.abs(newX - other.x);
+      if (leftDist < this.snapThreshold && leftDist < minXDist) {
+        snappedDx = other.x - element.x;
+        minXDist = leftDist;
+        guides.push({ type: 'vertical', position: other.x });
+      }
+
+      // Right edges
+      const rightDist = Math.abs(newRight - otherRight);
+      if (rightDist < this.snapThreshold && rightDist < minXDist) {
+        snappedDx = otherRight - element.width - element.x;
+        minXDist = rightDist;
+        guides.push({ type: 'vertical', position: otherRight });
+      }
+
+      // Center vertical alignment
+      const centerXDist = Math.abs(newCenterX - otherCenterX);
+      if (centerXDist < this.snapThreshold && centerXDist < minXDist) {
+        snappedDx = otherCenterX - element.width / 2 - element.x;
+        minXDist = centerXDist;
+        guides.push({ type: 'vertical', position: otherCenterX });
+      }
+
+      // Horizontal alignment checks
+      // Top edges
+      const topDist = Math.abs(newY - other.y);
+      if (topDist < this.snapThreshold && topDist < minYDist) {
+        snappedDy = other.y - element.y;
+        minYDist = topDist;
+        guides.push({ type: 'horizontal', position: other.y });
+      }
+
+      // Bottom edges
+      const bottomDist = Math.abs(newBottom - otherBottom);
+      if (bottomDist < this.snapThreshold && bottomDist < minYDist) {
+        snappedDy = otherBottom - element.height - element.y;
+        minYDist = bottomDist;
+        guides.push({ type: 'horizontal', position: otherBottom });
+      }
+
+      // Center horizontal alignment
+      const centerYDist = Math.abs(newCenterY - otherCenterY);
+      if (centerYDist < this.snapThreshold && centerYDist < minYDist) {
+        snappedDy = otherCenterY - element.height / 2 - element.y;
+        minYDist = centerYDist;
+        guides.push({ type: 'horizontal', position: otherCenterY });
+      }
+    }
+
+    return { dx: snappedDx, dy: snappedDy, guides };
+  }
+
+  toggleSnapping(): void {
+    this.snapEnabled = !this.snapEnabled;
+  }
+
+  toggleMinimap(): void {
+    this.showMinimap = !this.showMinimap;
+    this.render();
+  }
+
   // Connection handle methods
   private getConnectionHandles(element: BoardElement): Point[] {
     // Don't show handles for lines, connectors, or drawings
@@ -784,6 +905,10 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       y = Math.min(this.startPoint.y, endPoint.y);
     }
 
+    // Special styling for frames
+    const isFrame = this.currentTool === 'frame';
+    const frameText = isFrame ? 'Frame' : '';
+
     let request: CreateElementRequest = {
       type: this.getElementType(),
       x,
@@ -791,15 +916,15 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       width: this.currentTool === 'line' ? width : Math.max(width, 10),
       height: this.currentTool === 'line' ? height : Math.max(height, 10),
       rotation: 0,
-      backgroundColor: this.currentTool === 'sticky' ? '#FFEB3B' : '#FFFFFF',
-      borderColor: '#000000',
-      borderWidth: 2,
-      textColor: '#000000',
+      backgroundColor: isFrame ? 'rgba(33, 150, 243, 0.05)' : (this.currentTool === 'sticky' ? '#FFEB3B' : '#FFFFFF'),
+      borderColor: isFrame ? '#2196F3' : '#000000',
+      borderWidth: isFrame ? 3 : 2,
+      textColor: isFrame ? '#2196F3' : '#000000',
       fontFamily: 'Arial',
-      fontSize: 14,
-      fontWeight: 'normal',
+      fontSize: isFrame ? 18 : 14,
+      fontWeight: isFrame ? 'bold' : 'normal',
       fontStyle: 'normal',
-      textContent: '',
+      textContent: frameText,
       connectorStyle: 'solid'
     };
 
@@ -843,6 +968,7 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       case 'pen': return 'Drawing';
       case 'line': return 'Line';
       case 'connector': return 'Connector';
+      case 'frame': return 'Rectangle'; // Frames are stored as rectangles with special styling
       default: return 'Rectangle';
     }
   }
@@ -892,29 +1018,49 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       this.ctx.stroke();
     }
 
+    // Draw alignment guides
+    if (this.alignmentGuides.length > 0) {
+      this.drawAlignmentGuides();
+    }
+
     this.ctx.restore();
+
+    // Draw mini-map (in screen coordinates, not world coordinates)
+    if (this.showMinimap) {
+      this.drawMinimap();
+    }
   }
 
   private drawGrid(): void {
     const gridSize = 20;
     const canvas = this.canvasRef.nativeElement;
+
+    // Calculate visible area in world coordinates
+    const startX = -this.panX / this.zoom;
+    const startY = -this.panY / this.zoom;
     const width = canvas.width / this.zoom;
     const height = canvas.height / this.zoom;
+
+    // Calculate grid start positions (snap to grid)
+    const gridStartX = Math.floor(startX / gridSize) * gridSize;
+    const gridStartY = Math.floor(startY / gridSize) * gridSize;
 
     this.ctx.strokeStyle = '#E0E0E0';
     this.ctx.lineWidth = 0.5;
 
-    for (let x = 0; x < width; x += gridSize) {
+    // Draw vertical lines
+    for (let x = gridStartX; x < startX + width; x += gridSize) {
       this.ctx.beginPath();
-      this.ctx.moveTo(x, 0);
-      this.ctx.lineTo(x, height);
+      this.ctx.moveTo(x, startY);
+      this.ctx.lineTo(x, startY + height);
       this.ctx.stroke();
     }
 
-    for (let y = 0; y < height; y += gridSize) {
+    // Draw horizontal lines
+    for (let y = gridStartY; y < startY + height; y += gridSize) {
       this.ctx.beginPath();
-      this.ctx.moveTo(0, y);
-      this.ctx.lineTo(width, y);
+      this.ctx.moveTo(startX, y);
+      this.ctx.lineTo(startX + width, y);
       this.ctx.stroke();
     }
   }
@@ -952,6 +1098,8 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   }
 
   private drawRectangle(element: BoardElement): void {
+    const isFrame = element.textContent === 'Frame' && element.fontSize === 18 && element.fontWeight === 'bold';
+
     this.ctx.fillStyle = element.backgroundColor;
     this.ctx.strokeStyle = element.borderColor;
     this.ctx.lineWidth = element.borderWidth;
@@ -959,15 +1107,34 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     this.ctx.strokeRect(element.x, element.y, element.width, element.height);
 
     if (element.textContent) {
-      this.ctx.fillStyle = element.textColor;
-      this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
-      this.ctx.textAlign = 'center';
-      this.ctx.textBaseline = 'middle';
-      this.ctx.fillText(
-        element.textContent,
-        element.x + element.width / 2,
-        element.y + element.height / 2
-      );
+      if (isFrame) {
+        // Draw frame title bar
+        const titleBarHeight = 30;
+        this.ctx.fillStyle = 'rgba(33, 150, 243, 0.1)';
+        this.ctx.fillRect(element.x, element.y, element.width, titleBarHeight);
+
+        // Draw title text
+        this.ctx.fillStyle = element.textColor;
+        this.ctx.font = `${element.fontWeight} ${element.fontSize}px ${element.fontFamily}`;
+        this.ctx.textAlign = 'left';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(
+          element.textContent,
+          element.x + 10,
+          element.y + titleBarHeight / 2
+        );
+      } else {
+        // Regular rectangle/sticky note text (centered)
+        this.ctx.fillStyle = element.textColor;
+        this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
+        this.ctx.textAlign = 'center';
+        this.ctx.textBaseline = 'middle';
+        this.ctx.fillText(
+          element.textContent,
+          element.x + element.width / 2,
+          element.y + element.height / 2
+        );
+      }
     }
   }
 
@@ -1154,6 +1321,109 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       this.ctx.arc(handle.x, handle.y, handleSize / 2, 0, 2 * Math.PI);
       this.ctx.stroke();
     });
+
+    this.ctx.restore();
+  }
+
+  private drawAlignmentGuides(): void {
+    this.ctx.save();
+
+    this.ctx.strokeStyle = '#FF4081';
+    this.ctx.lineWidth = 1;
+    this.ctx.setLineDash([5, 5]);
+
+    const canvas = this.canvasRef.nativeElement;
+    const startX = -this.panX / this.zoom;
+    const startY = -this.panY / this.zoom;
+    const width = canvas.width / this.zoom;
+    const height = canvas.height / this.zoom;
+
+    for (const guide of this.alignmentGuides) {
+      this.ctx.beginPath();
+      if (guide.type === 'vertical') {
+        this.ctx.moveTo(guide.position, startY);
+        this.ctx.lineTo(guide.position, startY + height);
+      } else {
+        this.ctx.moveTo(startX, guide.position);
+        this.ctx.lineTo(startX + width, guide.position);
+      }
+      this.ctx.stroke();
+    }
+
+    this.ctx.setLineDash([]);
+    this.ctx.restore();
+  }
+
+  private drawMinimap(): void {
+    if (this.elements.length === 0) return;
+
+    const canvas = this.canvasRef.nativeElement;
+    this.ctx.save();
+
+    // Calculate bounds of all elements
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const element of this.elements) {
+      const elMinX = Math.min(element.x, element.x + element.width);
+      const elMaxX = Math.max(element.x, element.x + element.width);
+      const elMinY = Math.min(element.y, element.y + element.height);
+      const elMaxY = Math.max(element.y, element.y + element.height);
+
+      minX = Math.min(minX, elMinX);
+      minY = Math.min(minY, elMinY);
+      maxX = Math.max(maxX, elMaxX);
+      maxY = Math.max(maxY, elMaxY);
+    }
+
+    // Add padding
+    const padding = 50;
+    minX -= padding;
+    minY -= padding;
+    maxX += padding;
+    maxY += padding;
+
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+
+    // Calculate minimap scale
+    const minimapScale = Math.min(
+      this.minimapSize / contentWidth,
+      this.minimapSize / contentHeight
+    );
+
+    const minimapWidth = contentWidth * minimapScale;
+    const minimapHeight = contentHeight * minimapScale;
+
+    // Position minimap in bottom-right corner
+    const minimapX = canvas.width - minimapWidth - this.minimapPadding;
+    const minimapY = canvas.height - minimapHeight - this.minimapPadding;
+
+    // Draw minimap background
+    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    this.ctx.strokeStyle = '#CCCCCC';
+    this.ctx.lineWidth = 2;
+    this.ctx.fillRect(minimapX, minimapY, minimapWidth, minimapHeight);
+    this.ctx.strokeRect(minimapX, minimapY, minimapWidth, minimapHeight);
+
+    // Draw elements in minimap
+    for (const element of this.elements) {
+      const x = minimapX + (element.x - minX) * minimapScale;
+      const y = minimapY + (element.y - minY) * minimapScale;
+      const w = element.width * minimapScale;
+      const h = element.height * minimapScale;
+
+      this.ctx.fillStyle = element.backgroundColor || '#CCCCCC';
+      this.ctx.fillRect(x, y, w, h);
+    }
+
+    // Draw viewport rectangle
+    const viewportX = minimapX + (-this.panX / this.zoom - minX) * minimapScale;
+    const viewportY = minimapY + (-this.panY / this.zoom - minY) * minimapScale;
+    const viewportW = (canvas.width / this.zoom) * minimapScale;
+    const viewportH = (canvas.height / this.zoom) * minimapScale;
+
+    this.ctx.strokeStyle = '#2196F3';
+    this.ctx.lineWidth = 2;
+    this.ctx.strokeRect(viewportX, viewportY, viewportW, viewportH);
 
     this.ctx.restore();
   }

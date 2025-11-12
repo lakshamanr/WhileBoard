@@ -26,6 +26,9 @@
       <button (click)="selectTool('connector')" [class.active]="currentTool === 'connector'" title="Connector">
         Connector
       </button>
+      <button (click)="selectTool('frame')" [class.active]="currentTool === 'frame'" title="Frame (F)">
+        Frame
+      </button>
     </div>
 
     <div class="tool-group">
@@ -54,6 +57,15 @@
       <span class="zoom-level">{{ (zoom * 100).toFixed(0) }}%</span>
       <button (click)="zoomIn()" title="Zoom In (Ctrl++)">+</button>
       <button (click)="resetZoom()" title="Reset Zoom">Reset</button>
+    </div>
+
+    <div class="tool-group">
+      <button (click)="toggleSnapping()" [class.active]="snapEnabled" title="Toggle Smart Snapping">
+        {{ snapEnabled ? '🧲 Snap On' : 'Snap Off' }}
+      </button>
+      <button (click)="toggleMinimap()" [class.active]="showMinimap" title="Toggle Mini-map">
+        {{ showMinimap ? '🗺️ Map On' : 'Map Off' }}
+      </button>
     </div>
 
     <div class="tool-group">
@@ -88,6 +100,15 @@
       <li><strong>Ctrl+-</strong> - Zoom Out</li>
       <li><strong>Shift+Drag</strong> - Pan</li>
       <li><strong>Double-Click</strong> - Edit Text</li>
+      <li><strong>Mouse Wheel</strong> - Zoom (towards cursor)</li>
+    </ul>
+
+    <h4>Features</h4>
+    <ul>
+      <li><strong>Smart Snapping:</strong> Auto-aligns elements (pink guides)</li>
+      <li><strong>Connection Handles:</strong> Drag from circles on shapes</li>
+      <li><strong>Mini-map:</strong> Bird's-eye view in bottom-right</li>
+      <li><strong>Infinite Canvas:</strong> Zoom 5%-1000%, pan anywhere</li>
     </ul>
 
     <div class="tool-instructions" *ngIf="currentTool === 'text'">
@@ -98,6 +119,11 @@
       <strong>Connector Tool:</strong>
       <div *ngIf="!connectorStartElement">1. Click first element</div>
       <div *ngIf="connectorStartElement">2. Click second element to connect</div>
+    </div>
+
+    <div class="tool-instructions" *ngIf="currentTool === 'frame'">
+      <strong>Frame Tool:</strong> Drag to create a frame container for organizing elements.
+      Double-click frame title to rename.
     </div>
   </div>
 </div>
