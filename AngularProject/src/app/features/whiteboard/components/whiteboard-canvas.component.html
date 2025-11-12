@@ -87,6 +87,17 @@
       <li><strong>Ctrl++</strong> - Zoom In</li>
       <li><strong>Ctrl+-</strong> - Zoom Out</li>
       <li><strong>Shift+Drag</strong> - Pan</li>
+      <li><strong>Double-Click</strong> - Edit Text</li>
     </ul>
+
+    <div class="tool-instructions" *ngIf="currentTool === 'text'">
+      <strong>Text Tool:</strong> Click to create text, enter your text in the prompt.
+    </div>
+
+    <div class="tool-instructions" *ngIf="currentTool === 'connector'">
+      <strong>Connector Tool:</strong>
+      <div *ngIf="!connectorStartElement">1. Click first element</div>
+      <div *ngIf="connectorStartElement">2. Click second element to connect</div>
+    </div>
   </div>
 </div>

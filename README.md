@@ -229,6 +229,34 @@ Frontend will be available at http://localhost:4200
 | `Ctrl++` | Zoom in |
 | `Ctrl+-` | Zoom out |
 | `Shift+Drag` | Pan canvas |
+| `Double-Click` | Edit text element |
+
+## How to Use Special Tools
+
+### Text Tool
+1. Click the **Text** button in the toolbar
+2. Click anywhere on the canvas
+3. Enter your text in the prompt dialog
+4. Text will be created at the clicked position
+5. To edit: Switch to **Select** tool and double-click the text element
+
+### Connector Tool
+1. Click the **Connector** button in the toolbar
+2. Click the first element you want to connect (start point)
+3. The element will be highlighted
+4. Click the second element you want to connect (end point)
+5. A connector line with arrow will be drawn between the elements
+6. Connectors automatically update when you move connected elements
+7. Supported connector styles:
+   - **Straight** (default) - Direct line
+   - **Curved** - Bezier curve
+   - **Elbow** - Right-angle connector
+
+### Drawing/Pen Tool
+1. Click the **Pen** button
+2. Click and drag on the canvas
+3. Draw freehand paths
+4. Release to complete the drawing
 
 ## Running Tests
 

@@ -108,3 +108,17 @@
 .help-panel strong {
   color: #2196F3;
 }
+
+.tool-instructions {
+  margin-top: 15px;
+  padding: 10px;
+  background: #E3F2FD;
+  border-left: 3px solid #2196F3;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.tool-instructions div {
+  margin-top: 5px;
+  padding-left: 10px;
+}

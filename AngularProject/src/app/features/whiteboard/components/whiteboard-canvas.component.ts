@@ -52,6 +52,13 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   // Clipboard
   clipboard: BoardElement[] = [];
 
+  // Text editing
+  private editingTextElement?: BoardElement;
+  private textInput?: HTMLInputElement;
+
+  // Connector state
+  private connectorStartElement?: BoardElement;
+
   constructor(
     private route: ActivatedRoute,
     private elementService: ElementService,
@@ -202,6 +209,12 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     if (this.currentTool === 'select') {
       const clickedElement = this.getElementAtPoint(point);
       if (clickedElement) {
+        // Check for double-click on text elements
+        if (event.detail === 2 && clickedElement.type === 'Text') {
+          this.editText(clickedElement);
+          return;
+        }
+
         if (!event.ctrlKey) {
           this.selectedElements = [clickedElement];
         } else {
@@ -283,8 +296,21 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
     if (this.isDrawing) {
       this.isDrawing = false;
-      await this.createNewElement(point);
-      this.drawingPath = [];
+
+      // Special handling for text tool
+      if (this.currentTool === 'text') {
+        await this.createTextElement(point);
+      }
+      // Special handling for connector tool
+      else if (this.currentTool === 'connector') {
+        await this.handleConnectorClick(point);
+      }
+      // All other tools
+      else {
+        await this.createNewElement(point);
+        this.drawingPath = [];
+      }
+
       this.saveHistoryState();
     }
   }
@@ -405,6 +431,98 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   selectAll(): void {
     this.selectedElements = [...this.elements];
     this.render();
+  }
+
+  // Text creation and editing
+  private async createTextElement(point: Point): Promise<void> {
+    const text = prompt('Enter text:');
+    if (!text) return;
+
+    const request: CreateElementRequest = {
+      type: 'Text',
+      x: this.startPoint.x,
+      y: this.startPoint.y,
+      width: 200,
+      height: 30,
+      textContent: text,
+      textColor: '#000000',
+      fontSize: 16,
+      fontFamily: 'Arial',
+      backgroundColor: 'transparent',
+      borderColor: 'transparent',
+      borderWidth: 0
+    };
+
+    const element = await this.elementService.createElement(this.boardId, request).toPromise();
+    if (element) {
+      this.elements.push(element);
+      await this.realtimeService.notifyElementCreated(this.boardId, element);
+      this.render();
+    }
+  }
+
+  async editText(element: BoardElement): Promise<void> {
+    const newText = prompt('Edit text:', element.textContent);
+    if (newText === null) return;
+
+    const request: UpdateElementRequest = {
+      textContent: newText
+    };
+
+    const updated = await this.elementService.updateElement(this.boardId, element.id, request).toPromise();
+    if (updated) {
+      const index = this.elements.findIndex(e => e.id === element.id);
+      if (index !== -1) {
+        this.elements[index] = updated;
+      }
+      await this.realtimeService.notifyElementUpdated(this.boardId, updated);
+      this.render();
+    }
+  }
+
+  // Connector handling
+  private async handleConnectorClick(point: Point): Promise<void> {
+    const clickedElement = this.getElementAtPoint(point);
+
+    if (!this.connectorStartElement) {
+      // First click - select start element
+      if (clickedElement) {
+        this.connectorStartElement = clickedElement;
+        this.selectedElements = [clickedElement];
+        this.render();
+      }
+    } else {
+      // Second click - create connector
+      if (clickedElement && clickedElement.id !== this.connectorStartElement.id) {
+        await this.createConnector(this.connectorStartElement, clickedElement);
+      }
+      this.connectorStartElement = undefined;
+      this.selectedElements = [];
+      this.render();
+    }
+  }
+
+  private async createConnector(fromElement: BoardElement, toElement: BoardElement): Promise<void> {
+    const request: CreateElementRequest = {
+      type: 'Connector',
+      x: fromElement.x + fromElement.width / 2,
+      y: fromElement.y + fromElement.height / 2,
+      width: (toElement.x + toElement.width / 2) - (fromElement.x + fromElement.width / 2),
+      height: (toElement.y + toElement.height / 2) - (fromElement.y + fromElement.height / 2),
+      connectedFromElementId: fromElement.id,
+      connectedToElementId: toElement.id,
+      connectorStyle: 'straight',
+      borderColor: '#000000',
+      borderWidth: 2,
+      backgroundColor: 'transparent'
+    };
+
+    const element = await this.elementService.createElement(this.boardId, request).toPromise();
+    if (element) {
+      this.elements.push(element);
+      await this.realtimeService.notifyElementCreated(this.boardId, element);
+      this.render();
+    }
   }
 
   // Helper methods
@@ -585,6 +703,9 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       case 'Line':
         this.drawLine(element);
         break;
+      case 'Connector':
+        this.drawConnector(element);
+        break;
     }
 
     if (isSelected) {
@@ -649,6 +770,72 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     this.ctx.lineTo(element.x + element.width, element.y + element.height);
     this.ctx.strokeStyle = element.borderColor;
     this.ctx.lineWidth = element.borderWidth;
+    this.ctx.stroke();
+  }
+
+  private drawConnector(element: BoardElement): void {
+    // Get connected elements to calculate dynamic positions
+    let startX = element.x;
+    let startY = element.y;
+    let endX = element.x + element.width;
+    let endY = element.y + element.height;
+
+    // If connected to specific elements, update positions
+    if (element.connectedFromElementId && element.connectedToElementId) {
+      const fromElement = this.elements.find(e => e.id === element.connectedFromElementId);
+      const toElement = this.elements.find(e => e.id === element.connectedToElementId);
+
+      if (fromElement && toElement) {
+        startX = fromElement.x + fromElement.width / 2;
+        startY = fromElement.y + fromElement.height / 2;
+        endX = toElement.x + toElement.width / 2;
+        endY = toElement.y + toElement.height / 2;
+      }
+    }
+
+    // Draw the connector line
+    this.ctx.beginPath();
+    this.ctx.strokeStyle = element.borderColor;
+    this.ctx.lineWidth = element.borderWidth;
+
+    if (element.connectorStyle === 'curved') {
+      // Bezier curve
+      const controlX1 = startX + (endX - startX) / 3;
+      const controlY1 = startY;
+      const controlX2 = startX + (2 * (endX - startX)) / 3;
+      const controlY2 = endY;
+      this.ctx.moveTo(startX, startY);
+      this.ctx.bezierCurveTo(controlX1, controlY1, controlX2, controlY2, endX, endY);
+    } else if (element.connectorStyle === 'elbow') {
+      // Right-angle connector
+      const midX = (startX + endX) / 2;
+      this.ctx.moveTo(startX, startY);
+      this.ctx.lineTo(midX, startY);
+      this.ctx.lineTo(midX, endY);
+      this.ctx.lineTo(endX, endY);
+    } else {
+      // Straight line (default)
+      this.ctx.moveTo(startX, startY);
+      this.ctx.lineTo(endX, endY);
+    }
+
+    this.ctx.stroke();
+
+    // Draw arrow head at the end
+    const arrowSize = 10;
+    const angle = Math.atan2(endY - startY, endX - startX);
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(endX, endY);
+    this.ctx.lineTo(
+      endX - arrowSize * Math.cos(angle - Math.PI / 6),
+      endY - arrowSize * Math.sin(angle - Math.PI / 6)
+    );
+    this.ctx.moveTo(endX, endY);
+    this.ctx.lineTo(
+      endX - arrowSize * Math.cos(angle + Math.PI / 6),
+      endY - arrowSize * Math.sin(angle + Math.PI / 6)
+    );
     this.ctx.stroke();
   }
 
