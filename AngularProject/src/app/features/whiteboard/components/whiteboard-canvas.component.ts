@@ -656,6 +656,18 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       this.drawElement(element, this.selectedElements.includes(element));
     });
 
+    // Draw in-progress drawing path (real-time feedback)
+    if (this.isDrawing && this.currentTool === 'pen' && this.drawingPath.length > 1) {
+      this.ctx.beginPath();
+      this.ctx.strokeStyle = '#000000';
+      this.ctx.lineWidth = 2;
+      this.ctx.moveTo(this.drawingPath[0].x, this.drawingPath[0].y);
+      for (let i = 1; i < this.drawingPath.length; i++) {
+        this.ctx.lineTo(this.drawingPath[i].x, this.drawingPath[i].y);
+      }
+      this.ctx.stroke();
+    }
+
     this.ctx.restore();
   }
 
@@ -793,10 +805,17 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       }
     }
 
-    // Draw the connector line
+    // Draw the connector line with more visible styling
+    this.ctx.save();
+    const lineColor = element.borderColor || '#2196F3';
+    const lineWidth = element.borderWidth || 3;
+
+    this.ctx.strokeStyle = lineColor;
+    this.ctx.lineWidth = lineWidth;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+
     this.ctx.beginPath();
-    this.ctx.strokeStyle = element.borderColor;
-    this.ctx.lineWidth = element.borderWidth;
 
     if (element.connectorStyle === 'curved') {
       // Bezier curve
@@ -821,22 +840,25 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
     this.ctx.stroke();
 
-    // Draw arrow head at the end
-    const arrowSize = 10;
+    // Draw filled arrow head at the end
+    const arrowSize = 12;
     const angle = Math.atan2(endY - startY, endX - startX);
 
+    this.ctx.fillStyle = lineColor;
     this.ctx.beginPath();
     this.ctx.moveTo(endX, endY);
     this.ctx.lineTo(
       endX - arrowSize * Math.cos(angle - Math.PI / 6),
       endY - arrowSize * Math.sin(angle - Math.PI / 6)
     );
-    this.ctx.moveTo(endX, endY);
     this.ctx.lineTo(
       endX - arrowSize * Math.cos(angle + Math.PI / 6),
       endY - arrowSize * Math.sin(angle + Math.PI / 6)
     );
-    this.ctx.stroke();
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    this.ctx.restore();
   }
 
   private drawSelectionBox(element: BoardElement): void {
