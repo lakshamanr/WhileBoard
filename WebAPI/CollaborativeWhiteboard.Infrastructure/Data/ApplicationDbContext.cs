@@ -76,6 +76,12 @@ public class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.BoardId);
             entity.HasIndex(e => e.CreatedBy);
+
+            // Configure relationship with User (Creator)
+            entity.HasOne(e => e.Creator)
+                .WithMany()
+                .HasForeignKey(e => e.CreatedBy)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         // BoardCollaborator configuration

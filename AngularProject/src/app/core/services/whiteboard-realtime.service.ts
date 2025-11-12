@@ -50,17 +50,39 @@ export class WhiteboardRealtimeService {
   async connect(boardId: string): Promise<void> {
     const token = this.authService.token;
     if (!token) {
+      console.error('No authentication token available');
       throw new Error('No authentication token available');
     }
 
     this.hubConnection = new signalR.HubConnectionBuilder()
       .withUrl(`${environment.apiUrl.replace('/api', '')}/hubs/whiteboard`, {
-        accessTokenFactory: () => token
+        accessTokenFactory: () => {
+          const currentToken = this.authService.token;
+          if (!currentToken) {
+            console.error('Token factory: No token available');
+            return '';
+          }
+          return currentToken;
+        },
+        skipNegotiation: false,
+        transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.ServerSentEvents | signalR.HttpTransportType.LongPolling
       })
-      .withAutomaticReconnect()
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: (retryContext) => {
+          if (retryContext.elapsedMilliseconds < 60000) {
+            // Retry every 2 seconds for the first minute
+            return 2000;
+          } else {
+            // After 1 minute, retry every 10 seconds
+            return 10000;
+          }
+        }
+      })
+      .configureLogging(signalR.LogLevel.Information)
       .build();
 
     this.setupEventHandlers();
+    this.setupConnectionHandlers();
 
     try {
       await this.hubConnection.start();
@@ -72,6 +94,25 @@ export class WhiteboardRealtimeService {
       this.connectedSubject.next(false);
       throw error;
     }
+  }
+
+  private setupConnectionHandlers(): void {
+    if (!this.hubConnection) return;
+
+    this.hubConnection.onreconnecting((error) => {
+      console.warn('SignalR reconnecting...', error);
+      this.connectedSubject.next(false);
+    });
+
+    this.hubConnection.onreconnected((connectionId) => {
+      console.log('SignalR reconnected', connectionId);
+      this.connectedSubject.next(true);
+    });
+
+    this.hubConnection.onclose((error) => {
+      console.error('SignalR connection closed', error);
+      this.connectedSubject.next(false);
+    });
   }
 
   async disconnect(boardId: string): Promise<void> {
@@ -143,7 +184,12 @@ export class WhiteboardRealtimeService {
 
   async sendCursorPosition(boardId: string, x: number, y: number): Promise<void> {
     if (this.hubConnection?.state === signalR.HubConnectionState.Connected) {
-      await this.hubConnection.invoke('CursorMoved', boardId, x, y);
+      try {
+        await this.hubConnection.invoke('CursorMoved', boardId, x, y);
+      } catch (error) {
+        // Silently fail for cursor position updates to avoid flooding console
+        // Connection state will be handled by connection handlers
+      }
     }
   }
 }

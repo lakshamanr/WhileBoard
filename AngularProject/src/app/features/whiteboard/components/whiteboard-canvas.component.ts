@@ -45,12 +45,12 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   private drawingPath: Point[] = [];
 
   // Undo/Redo
-  private history: HistoryState[] = [];
-  private historyIndex: number = -1;
+  history: HistoryState[] = [];
+  historyIndex: number = -1;
   private maxHistorySize: number = 50;
 
   // Clipboard
-  private clipboard: BoardElement[] = [];
+  clipboard: BoardElement[] = [];
 
   constructor(
     private route: ActivatedRoute,
@@ -355,18 +355,31 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
         y: element.y + 20,
         width: element.width,
         height: element.height,
-        rotation: element.rotation,
-        backgroundColor: element.backgroundColor,
-        borderColor: element.borderColor,
-        borderWidth: element.borderWidth,
-        textColor: element.textColor,
-        textContent: element.textContent
+        rotation: element.rotation || 0,
+        backgroundColor: element.backgroundColor || '#FFFFFF',
+        borderColor: element.borderColor || '#000000',
+        borderWidth: element.borderWidth || 2,
+        textColor: element.textColor || '#000000',
+        fontFamily: element.fontFamily || 'Arial',
+        fontSize: element.fontSize || 14,
+        fontWeight: element.fontWeight || 'normal',
+        fontStyle: element.fontStyle || 'normal',
+        textContent: element.textContent || '',
+        imageUrl: element.imageUrl || '',
+        connectedFromElementId: element.connectedFromElementId,
+        connectedToElementId: element.connectedToElementId,
+        connectorStyle: element.connectorStyle || 'solid',
+        pathData: element.pathData || ''
       };
 
-      const newElement = await this.elementService.createElement(this.boardId, request).toPromise();
-      if (newElement) {
-        newElements.push(newElement);
-        await this.realtimeService.notifyElementCreated(this.boardId, newElement);
+      try {
+        const newElement = await this.elementService.createElement(this.boardId, request).toPromise();
+        if (newElement) {
+          newElements.push(newElement);
+          await this.realtimeService.notifyElementCreated(this.boardId, newElement);
+        }
+      } catch (error) {
+        console.error('Error pasting element:', error);
       }
     }
 
@@ -442,20 +455,33 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       y,
       width: Math.max(width, 10),
       height: Math.max(height, 10),
+      rotation: 0,
       backgroundColor: this.currentTool === 'sticky' ? '#FFEB3B' : '#FFFFFF',
       borderColor: '#000000',
-      borderWidth: 2
+      borderWidth: 2,
+      textColor: '#000000',
+      fontFamily: 'Arial',
+      fontSize: 14,
+      fontWeight: 'normal',
+      fontStyle: 'normal',
+      textContent: '',
+      connectorStyle: 'solid'
     };
 
     if (this.currentTool === 'pen' && this.drawingPath.length > 0) {
       request.pathData = this.pathToSVG(this.drawingPath);
     }
 
-    const element = await this.elementService.createElement(this.boardId, request).toPromise();
-    if (element) {
-      this.elements.push(element);
-      await this.realtimeService.notifyElementCreated(this.boardId, element);
-      this.render();
+    try {
+      const element = await this.elementService.createElement(this.boardId, request).toPromise();
+      if (element) {
+        this.elements.push(element);
+        await this.realtimeService.notifyElementCreated(this.boardId, element);
+        this.render();
+      }
+    } catch (error) {
+      console.error('Error creating element:', error);
+      // Show error to user if needed
     }
   }
 

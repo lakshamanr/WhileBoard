@@ -133,18 +133,26 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<WhiteboardHub>("/hubs/whiteboard");
 
-// Database migration
+// Database migration and seeding
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var services = scope.ServiceProvider;
+    var db = services.GetRequiredService<ApplicationDbContext>();
+    var logger = services.GetRequiredService<ILogger<Program>>();
+    
     try
     {
+        // Apply migrations
         db.Database.Migrate();
+        logger.LogInformation("Database migration completed successfully.");
+        
+        // Seed data
+        var seeder = new DataSeeder(db, services.GetRequiredService<ILogger<DataSeeder>>());
+        await seeder.SeedAsync();
     }
     catch (Exception ex)
     {
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        logger.LogError(ex, "An error occurred while migrating the database.");
+        logger.LogError(ex, "An error occurred while migrating or seeding the database.");
     }
 }
 
