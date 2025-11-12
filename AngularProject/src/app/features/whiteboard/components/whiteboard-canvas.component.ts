@@ -546,10 +546,49 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   }
 
   private isPointInElement(point: Point, element: BoardElement): boolean {
-    return point.x >= element.x &&
-           point.x <= element.x + element.width &&
-           point.y >= element.y &&
-           point.y <= element.y + element.height;
+    // Special handling for circles - check distance from center
+    if (element.type === 'Circle') {
+      const centerX = element.x + element.width / 2;
+      const centerY = element.y + element.height / 2;
+      const radius = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
+      const distance = Math.sqrt(
+        Math.pow(point.x - centerX, 2) + Math.pow(point.y - centerY, 2)
+      );
+      return distance <= radius;
+    }
+
+    // Special handling for lines - check distance to line segment
+    if (element.type === 'Line' || element.type === 'Connector') {
+      const x1 = element.x;
+      const y1 = element.y;
+      const x2 = element.x + element.width;
+      const y2 = element.y + element.height;
+
+      // Calculate distance from point to line segment
+      const lineLength = Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+      if (lineLength === 0) return false;
+
+      const distance = Math.abs((y2 - y1) * point.x - (x2 - x1) * point.y + x2 * y1 - y2 * x1) / lineLength;
+
+      // Check if point is within line segment bounds (with tolerance)
+      const minX = Math.min(x1, x2) - 5;
+      const maxX = Math.max(x1, x2) + 5;
+      const minY = Math.min(y1, y2) - 5;
+      const maxY = Math.max(y1, y2) + 5;
+
+      return distance <= 5 &&
+             point.x >= minX && point.x <= maxX &&
+             point.y >= minY && point.y <= maxY;
+    }
+
+    // For all other elements, use rectangular bounds (handle negative dimensions)
+    const minX = Math.min(element.x, element.x + element.width);
+    const maxX = Math.max(element.x, element.x + element.width);
+    const minY = Math.min(element.y, element.y + element.height);
+    const maxY = Math.max(element.y, element.y + element.height);
+
+    return point.x >= minX && point.x <= maxX &&
+           point.y >= minY && point.y <= maxY;
   }
 
   private toggleSelection(element: BoardElement): void {
@@ -562,17 +601,26 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   }
 
   private async createNewElement(endPoint: Point): Promise<void> {
-    const width = Math.abs(endPoint.x - this.startPoint.x);
-    const height = Math.abs(endPoint.y - this.startPoint.y);
-    const x = Math.min(this.startPoint.x, endPoint.x);
-    const y = Math.min(this.startPoint.y, endPoint.y);
+    // For lines, preserve direction by using signed width/height
+    let width = endPoint.x - this.startPoint.x;
+    let height = endPoint.y - this.startPoint.y;
+    let x = this.startPoint.x;
+    let y = this.startPoint.y;
+
+    // For non-line shapes, normalize to top-left corner with positive dimensions
+    if (this.currentTool !== 'line' && this.currentTool !== 'connector') {
+      width = Math.abs(width);
+      height = Math.abs(height);
+      x = Math.min(this.startPoint.x, endPoint.x);
+      y = Math.min(this.startPoint.y, endPoint.y);
+    }
 
     let request: CreateElementRequest = {
       type: this.getElementType(),
       x,
       y,
-      width: Math.max(width, 10),
-      height: Math.max(height, 10),
+      width: this.currentTool === 'line' ? width : Math.max(width, 10),
+      height: this.currentTool === 'line' ? height : Math.max(height, 10),
       rotation: 0,
       backgroundColor: this.currentTool === 'sticky' ? '#FFEB3B' : '#FFFFFF',
       borderColor: '#000000',
@@ -777,12 +825,43 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   }
 
   private drawLine(element: BoardElement): void {
+    const startX = element.x;
+    const startY = element.y;
+    const endX = element.x + element.width;
+    const endY = element.y + element.height;
+
+    this.ctx.save();
+    const lineColor = element.borderColor || '#000000';
+    const lineWidth = element.borderWidth || 2;
+
+    // Draw the line
+    this.ctx.strokeStyle = lineColor;
+    this.ctx.lineWidth = lineWidth;
+    this.ctx.lineCap = 'round';
     this.ctx.beginPath();
-    this.ctx.moveTo(element.x, element.y);
-    this.ctx.lineTo(element.x + element.width, element.y + element.height);
-    this.ctx.strokeStyle = element.borderColor;
-    this.ctx.lineWidth = element.borderWidth;
+    this.ctx.moveTo(startX, startY);
+    this.ctx.lineTo(endX, endY);
     this.ctx.stroke();
+
+    // Draw arrow head at the end
+    const arrowSize = 10;
+    const angle = Math.atan2(endY - startY, endX - startX);
+
+    this.ctx.fillStyle = lineColor;
+    this.ctx.beginPath();
+    this.ctx.moveTo(endX, endY);
+    this.ctx.lineTo(
+      endX - arrowSize * Math.cos(angle - Math.PI / 6),
+      endY - arrowSize * Math.sin(angle - Math.PI / 6)
+    );
+    this.ctx.lineTo(
+      endX - arrowSize * Math.cos(angle + Math.PI / 6),
+      endY - arrowSize * Math.sin(angle + Math.PI / 6)
+    );
+    this.ctx.closePath();
+    this.ctx.fill();
+
+    this.ctx.restore();
   }
 
   private drawConnector(element: BoardElement): void {
@@ -865,7 +944,14 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     this.ctx.strokeStyle = '#2196F3';
     this.ctx.lineWidth = 2;
     this.ctx.setLineDash([5, 5]);
-    this.ctx.strokeRect(element.x - 2, element.y - 2, element.width + 4, element.height + 4);
+
+    // Handle negative dimensions for proper selection box
+    const minX = Math.min(element.x, element.x + element.width);
+    const minY = Math.min(element.y, element.y + element.height);
+    const width = Math.abs(element.width);
+    const height = Math.abs(element.height);
+
+    this.ctx.strokeRect(minX - 2, minY - 2, width + 4, height + 4);
     this.ctx.setLineDash([]);
   }
 
