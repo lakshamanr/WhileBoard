@@ -1,0 +1,8 @@
+node_modules/
+dist-electron/
+frontend/
+api/
+database/
+*.log
+.DS_Store
+Thumbs.db

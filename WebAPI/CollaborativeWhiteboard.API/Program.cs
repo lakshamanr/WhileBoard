@@ -42,10 +42,24 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// Database
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+// Database - Support both SQL Server and SQLite
+var databasePath = Environment.GetEnvironmentVariable("DATABASE_PATH");
+if (!string.IsNullOrEmpty(databasePath))
+{
+    // Use SQLite for local development or Electron desktop app
+    var sqliteConnectionString = $"Data Source={databasePath}";
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlite(sqliteConnectionString));
+    Console.WriteLine($"Using SQLite database at: {databasePath}");
+}
+else
+{
+    // Use SQL Server for web deployment
+    var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+    builder.Services.AddDbContext<ApplicationDbContext>(options =>
+        options.UseSqlServer(connectionString));
+    Console.WriteLine("Using SQL Server database");
+}
 
 // JWT Authentication
 var jwtSettings = builder.Configuration.GetSection("JwtSettings");
@@ -94,7 +108,16 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngular", policy =>
     {
-        policy.WithOrigins("http://localhost:4200", "http://localhost:4201")
+        policy.WithOrigins("http://localhost:4200", "http://localhost:4201", "http://localhost:3000")
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials();
+    });
+
+    // Policy for Electron desktop app
+    options.AddPolicy("AllowElectron", policy =>
+    {
+        policy.SetIsOriginAllowed(_ => true) // Allow any origin for Electron
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -125,7 +148,9 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-app.UseCors("AllowAngular");
+// Use appropriate CORS policy based on environment
+var isElectronMode = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_PATH"));
+app.UseCors(isElectronMode ? "AllowElectron" : "AllowAngular");
 
 app.UseAuthentication();
 app.UseAuthorization();
