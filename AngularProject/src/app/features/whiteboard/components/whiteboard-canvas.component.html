@@ -11,6 +11,9 @@
       <button (click)="selectTool('circle')" [class.active]="currentTool === 'circle'" title="Circle (C)">
         Circle
       </button>
+      <button (click)="selectTool('triangle')" [class.active]="currentTool === 'triangle'" title="Triangle">
+        Triangle
+      </button>
       <button (click)="selectTool('line')" [class.active]="currentTool === 'line'" title="Line (L)">
         Line
       </button>
@@ -109,21 +112,33 @@
       <li><strong>Connection Handles:</strong> Drag from circles on shapes</li>
       <li><strong>Mini-map:</strong> Bird's-eye view in bottom-right</li>
       <li><strong>Infinite Canvas:</strong> Zoom 5%-1000%, pan anywhere</li>
+      <li><strong>Shapes:</strong> Rectangle, Circle, Triangle, Line, Connector</li>
     </ul>
 
     <div class="tool-instructions" *ngIf="currentTool === 'text'">
       <strong>Text Tool:</strong> Click to create text, enter your text in the prompt.
     </div>
 
+    <div class="tool-instructions" *ngIf="currentTool === 'sticky'">
+      <strong>Sticky Note Tool:</strong> Drag to create size, enter text and choose color (yellow/pink/blue/green/orange).
+    </div>
+
     <div class="tool-instructions" *ngIf="currentTool === 'connector'">
       <strong>Connector Tool:</strong>
       <div *ngIf="!connectorStartElement">1. Click first element</div>
       <div *ngIf="connectorStartElement">2. Click second element to connect</div>
+      <div>Or drag connection handles between elements!</div>
+      <div>Double-click connector to add text label.</div>
     </div>
 
     <div class="tool-instructions" *ngIf="currentTool === 'frame'">
-      <strong>Frame Tool:</strong> Drag to create a frame container for organizing elements.
-      Double-click frame title to rename.
+      <strong>Frame Tool:</strong> Drag to create a frame, enter custom name.
+      Perfect for organizing board sections into slides or topics.
+    </div>
+
+    <div class="tool-instructions" *ngIf="currentTool === 'line'">
+      <strong>Line Tool:</strong> Drag to draw a line with arrow.
+      Double-click to add text label.
     </div>
   </div>
 </div>

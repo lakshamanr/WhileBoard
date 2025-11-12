@@ -31,7 +31,7 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   boardId: string = '';
   elements: BoardElement[] = [];
   selectedElements: BoardElement[] = [];
-  currentTool: 'select' | 'rectangle' | 'circle' | 'text' | 'sticky' | 'pen' | 'line' | 'connector' | 'frame' = 'select';
+  currentTool: 'select' | 'rectangle' | 'circle' | 'triangle' | 'text' | 'sticky' | 'pen' | 'line' | 'connector' | 'frame' = 'select';
 
   // Canvas state
   zoom: number = 1;
@@ -234,8 +234,8 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
       const clickedElement = this.getElementAtPoint(point);
       if (clickedElement) {
-        // Check for double-click on text elements
-        if (event.detail === 2 && clickedElement.type === 'Text') {
+        // Check for double-click on text elements and connectors
+        if (event.detail === 2 && (clickedElement.type === 'Text' || clickedElement.type === 'Connector' || clickedElement.type === 'Line')) {
           this.editText(clickedElement);
           return;
         }
@@ -380,6 +380,14 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       // Special handling for text tool
       if (this.currentTool === 'text') {
         await this.createTextElement(point);
+      }
+      // Special handling for sticky note tool
+      else if (this.currentTool === 'sticky') {
+        await this.createStickyNote(point);
+      }
+      // Special handling for frame tool
+      else if (this.currentTool === 'frame') {
+        await this.createFrame(point);
       }
       // Special handling for connector tool
       else if (this.currentTool === 'connector') {
@@ -567,6 +575,92 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
         this.elements[index] = updated;
       }
       await this.realtimeService.notifyElementUpdated(this.boardId, updated);
+      this.render();
+    }
+  }
+
+  // Sticky note creation
+  private async createStickyNote(point: Point): Promise<void> {
+    const text = prompt('Enter sticky note text:');
+    if (text === null) return;
+
+    const color = prompt('Enter color (yellow, pink, blue, green, orange) or hex code:', 'yellow');
+    let backgroundColor = '#FFEB3B'; // Default yellow
+
+    // Map color names to hex codes
+    const colorMap: { [key: string]: string } = {
+      'yellow': '#FFEB3B',
+      'pink': '#FF4081',
+      'blue': '#2196F3',
+      'green': '#4CAF50',
+      'orange': '#FF9800'
+    };
+
+    if (color) {
+      backgroundColor = colorMap[color.toLowerCase()] || (color.startsWith('#') ? color : '#FFEB3B');
+    }
+
+    const width = Math.abs(point.x - this.startPoint.x);
+    const height = Math.abs(point.y - this.startPoint.y);
+    const x = Math.min(this.startPoint.x, point.x);
+    const y = Math.min(this.startPoint.y, point.y);
+
+    const request: CreateElementRequest = {
+      type: 'StickyNote',
+      x,
+      y,
+      width: Math.max(width, 150),
+      height: Math.max(height, 150),
+      textContent: text,
+      textColor: '#000000',
+      fontSize: 14,
+      fontFamily: 'Arial',
+      backgroundColor,
+      borderColor: backgroundColor,
+      borderWidth: 2
+    };
+
+    const element = await this.elementService.createElement(this.boardId, request).toPromise();
+    if (element) {
+      this.elements.push(element);
+      await this.realtimeService.notifyElementCreated(this.boardId, element);
+      this.render();
+    }
+  }
+
+  // Frame creation
+  private async createFrame(point: Point): Promise<void> {
+    const name = prompt('Enter frame name:', 'Frame');
+    if (name === null) return;
+
+    const width = Math.abs(point.x - this.startPoint.x);
+    const height = Math.abs(point.y - this.startPoint.y);
+    const x = Math.min(this.startPoint.x, point.x);
+    const y = Math.min(this.startPoint.y, point.y);
+
+    const request: CreateElementRequest = {
+      type: 'Rectangle',
+      x,
+      y,
+      width: Math.max(width, 200),
+      height: Math.max(height, 150),
+      rotation: 0,
+      backgroundColor: 'rgba(33, 150, 243, 0.05)',
+      borderColor: '#2196F3',
+      borderWidth: 3,
+      textColor: '#2196F3',
+      fontFamily: 'Arial',
+      fontSize: 18,
+      fontWeight: 'bold',
+      fontStyle: 'normal',
+      textContent: name,
+      connectorStyle: 'solid'
+    };
+
+    const element = await this.elementService.createElement(this.boardId, request).toPromise();
+    if (element) {
+      this.elements.push(element);
+      await this.realtimeService.notifyElementCreated(this.boardId, element);
       this.render();
     }
   }
@@ -905,10 +999,6 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       y = Math.min(this.startPoint.y, endPoint.y);
     }
 
-    // Special styling for frames
-    const isFrame = this.currentTool === 'frame';
-    const frameText = isFrame ? 'Frame' : '';
-
     let request: CreateElementRequest = {
       type: this.getElementType(),
       x,
@@ -916,15 +1006,15 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       width: this.currentTool === 'line' ? width : Math.max(width, 10),
       height: this.currentTool === 'line' ? height : Math.max(height, 10),
       rotation: 0,
-      backgroundColor: isFrame ? 'rgba(33, 150, 243, 0.05)' : (this.currentTool === 'sticky' ? '#FFEB3B' : '#FFFFFF'),
-      borderColor: isFrame ? '#2196F3' : '#000000',
-      borderWidth: isFrame ? 3 : 2,
-      textColor: isFrame ? '#2196F3' : '#000000',
+      backgroundColor: '#FFFFFF',
+      borderColor: '#000000',
+      borderWidth: 2,
+      textColor: '#000000',
       fontFamily: 'Arial',
-      fontSize: isFrame ? 18 : 14,
-      fontWeight: isFrame ? 'bold' : 'normal',
+      fontSize: 14,
+      fontWeight: 'normal',
       fontStyle: 'normal',
-      textContent: frameText,
+      textContent: '',
       connectorStyle: 'solid'
     };
 
@@ -963,6 +1053,7 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     switch (this.currentTool) {
       case 'rectangle': return 'Rectangle';
       case 'circle': return 'Circle';
+      case 'triangle': return 'Triangle';
       case 'text': return 'Text';
       case 'sticky': return 'StickyNote';
       case 'pen': return 'Drawing';
@@ -1076,6 +1167,9 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       case 'Circle':
         this.drawCircle(element);
         break;
+      case 'Triangle':
+        this.drawTriangle(element);
+        break;
       case 'Text':
         this.drawText(element);
         break;
@@ -1150,6 +1244,35 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     this.ctx.strokeStyle = element.borderColor;
     this.ctx.lineWidth = element.borderWidth;
     this.ctx.stroke();
+  }
+
+  private drawTriangle(element: BoardElement): void {
+    const centerX = element.x + element.width / 2;
+
+    this.ctx.beginPath();
+    this.ctx.moveTo(centerX, element.y);
+    this.ctx.lineTo(element.x, element.y + element.height);
+    this.ctx.lineTo(element.x + element.width, element.y + element.height);
+    this.ctx.closePath();
+
+    this.ctx.fillStyle = element.backgroundColor;
+    this.ctx.fill();
+    this.ctx.strokeStyle = element.borderColor;
+    this.ctx.lineWidth = element.borderWidth;
+    this.ctx.stroke();
+
+    // Draw text if present
+    if (element.textContent) {
+      this.ctx.fillStyle = element.textColor;
+      this.ctx.font = `${element.fontSize}px ${element.fontFamily}`;
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(
+        element.textContent,
+        centerX,
+        element.y + (2 * element.height) / 3
+      );
+    }
   }
 
   private drawText(element: BoardElement): void {
@@ -1279,6 +1402,33 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     );
     this.ctx.closePath();
     this.ctx.fill();
+
+    // Draw text label if present
+    if (element.textContent) {
+      const midX = (startX + endX) / 2;
+      const midY = (startY + endY) / 2;
+
+      // Draw background for text
+      this.ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      this.ctx.font = `${element.fontSize || 12}px ${element.fontFamily || 'Arial'}`;
+      const textMetrics = this.ctx.measureText(element.textContent);
+      const textWidth = textMetrics.width;
+      const textHeight = element.fontSize || 12;
+      const padding = 4;
+
+      this.ctx.fillRect(
+        midX - textWidth / 2 - padding,
+        midY - textHeight / 2 - padding,
+        textWidth + padding * 2,
+        textHeight + padding * 2
+      );
+
+      // Draw text
+      this.ctx.fillStyle = element.textColor || '#000000';
+      this.ctx.textAlign = 'center';
+      this.ctx.textBaseline = 'middle';
+      this.ctx.fillText(element.textContent, midX, midY);
+    }
 
     this.ctx.restore();
   }
@@ -1445,6 +1595,21 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       const radius = Math.sqrt(width * width + height * height);
       this.ctx.beginPath();
       this.ctx.arc(this.startPoint.x, this.startPoint.y, radius, 0, 2 * Math.PI);
+      this.ctx.stroke();
+    } else if (this.currentTool === 'line' || this.currentTool === 'connector') {
+      // Draw line preview
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.startPoint.x, this.startPoint.y);
+      this.ctx.lineTo(endPoint.x, endPoint.y);
+      this.ctx.stroke();
+    } else if (this.currentTool === 'triangle') {
+      // Draw triangle preview
+      const centerX = this.startPoint.x + width / 2;
+      this.ctx.beginPath();
+      this.ctx.moveTo(centerX, this.startPoint.y);
+      this.ctx.lineTo(this.startPoint.x, this.startPoint.y + height);
+      this.ctx.lineTo(this.startPoint.x + width, this.startPoint.y + height);
+      this.ctx.closePath();
       this.ctx.stroke();
     } else {
       this.ctx.strokeRect(this.startPoint.x, this.startPoint.y, width, height);
