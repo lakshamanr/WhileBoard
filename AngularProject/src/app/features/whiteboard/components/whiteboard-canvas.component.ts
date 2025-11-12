@@ -59,6 +59,11 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   // Connector state
   connectorStartElement?: BoardElement;
 
+  // Connection handles
+  private hoveredElement?: BoardElement;
+  private isDraggingFromHandle: boolean = false;
+  private dragFromHandle?: { element: BoardElement; position: Point };
+
   constructor(
     private route: ActivatedRoute,
     private elementService: ElementService,
@@ -207,6 +212,16 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     }
 
     if (this.currentTool === 'select') {
+      // Check if clicking on a connection handle
+      const handleInfo = this.getHandleAtPoint(point);
+      if (handleInfo) {
+        this.isDraggingFromHandle = true;
+        this.dragFromHandle = handleInfo;
+        this.startPoint = handleInfo.position;
+        this.render();
+        return;
+      }
+
       const clickedElement = this.getElementAtPoint(point);
       if (clickedElement) {
         // Check for double-click on text elements
@@ -250,6 +265,26 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       return;
     }
 
+    // Handle dragging from connection handle
+    if (this.isDraggingFromHandle) {
+      this.render();
+      // Draw preview line from handle to cursor
+      this.ctx.save();
+      this.ctx.translate(this.panX, this.panY);
+      this.ctx.scale(this.zoom, this.zoom);
+
+      this.ctx.strokeStyle = '#2196F3';
+      this.ctx.lineWidth = 2;
+      this.ctx.setLineDash([5, 5]);
+      this.ctx.beginPath();
+      this.ctx.moveTo(this.startPoint.x, this.startPoint.y);
+      this.ctx.lineTo(point.x, point.y);
+      this.ctx.stroke();
+
+      this.ctx.restore();
+      return;
+    }
+
     if (this.isDragging && this.selectedElements.length > 0) {
       const dx = point.x - this.startPoint.x;
       const dy = point.y - this.startPoint.y;
@@ -274,6 +309,15 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
       }
     }
 
+    // Update hovered element for showing connection handles
+    if (this.currentTool === 'select' && !this.isDragging && !this.isDrawing) {
+      const elementAtPoint = this.getElementAtPoint(point);
+      if (elementAtPoint !== this.hoveredElement) {
+        this.hoveredElement = elementAtPoint;
+        this.render();
+      }
+    }
+
     // Send cursor position for real-time collaboration
     this.realtimeService.sendCursorPosition(this.boardId, point.x, point.y);
   }
@@ -283,6 +327,21 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
     if (this.isPanning) {
       this.isPanning = false;
+      return;
+    }
+
+    // Handle connection from handle drag
+    if (this.isDraggingFromHandle && this.dragFromHandle) {
+      this.isDraggingFromHandle = false;
+      const targetElement = this.getElementAtPoint(point);
+
+      if (targetElement && targetElement.id !== this.dragFromHandle.element.id) {
+        // Create connector between elements
+        await this.createConnectorFromHandles(this.dragFromHandle.element, targetElement);
+      }
+
+      this.dragFromHandle = undefined;
+      this.render();
       return;
     }
 
@@ -600,6 +659,116 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Connection handle methods
+  private getConnectionHandles(element: BoardElement): Point[] {
+    // Don't show handles for lines, connectors, or drawings
+    if (element.type === 'Line' || element.type === 'Connector' || element.type === 'Drawing') {
+      return [];
+    }
+
+    const handles: Point[] = [];
+
+    if (element.type === 'Circle') {
+      const centerX = element.x + element.width / 2;
+      const centerY = element.y + element.height / 2;
+      const radius = Math.min(Math.abs(element.width), Math.abs(element.height)) / 2;
+
+      // Top, right, bottom, left
+      handles.push({ x: centerX, y: centerY - radius }); // Top
+      handles.push({ x: centerX + radius, y: centerY }); // Right
+      handles.push({ x: centerX, y: centerY + radius }); // Bottom
+      handles.push({ x: centerX - radius, y: centerY }); // Left
+    } else {
+      // For rectangles, sticky notes, text
+      const minX = Math.min(element.x, element.x + element.width);
+      const maxX = Math.max(element.x, element.x + element.width);
+      const minY = Math.min(element.y, element.y + element.height);
+      const maxY = Math.max(element.y, element.y + element.height);
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+
+      // Top, right, bottom, left
+      handles.push({ x: centerX, y: minY }); // Top
+      handles.push({ x: maxX, y: centerY }); // Right
+      handles.push({ x: centerX, y: maxY }); // Bottom
+      handles.push({ x: minX, y: centerY }); // Left
+    }
+
+    return handles;
+  }
+
+  private getHandleAtPoint(point: Point): { element: BoardElement; position: Point } | undefined {
+    const handleRadius = 6; // Clickable radius
+
+    // Check all selected and hovered elements for handle clicks
+    const elementsToCheck = [...this.selectedElements];
+    if (this.hoveredElement && !elementsToCheck.includes(this.hoveredElement)) {
+      elementsToCheck.push(this.hoveredElement);
+    }
+
+    for (const element of elementsToCheck) {
+      const handles = this.getConnectionHandles(element);
+      for (const handle of handles) {
+        const distance = Math.sqrt(
+          Math.pow(point.x - handle.x, 2) + Math.pow(point.y - handle.y, 2)
+        );
+        if (distance <= handleRadius) {
+          return { element, position: handle };
+        }
+      }
+    }
+
+    return undefined;
+  }
+
+  private async createConnectorFromHandles(fromElement: BoardElement, toElement: BoardElement): Promise<void> {
+    // Find the closest handles between the two elements
+    const fromHandles = this.getConnectionHandles(fromElement);
+    const toHandles = this.getConnectionHandles(toElement);
+
+    if (fromHandles.length === 0 || toHandles.length === 0) return;
+
+    // Find the pair of handles that are closest to each other
+    let minDistance = Infinity;
+    let bestFromHandle = fromHandles[0];
+    let bestToHandle = toHandles[0];
+
+    for (const fromHandle of fromHandles) {
+      for (const toHandle of toHandles) {
+        const distance = Math.sqrt(
+          Math.pow(toHandle.x - fromHandle.x, 2) + Math.pow(toHandle.y - fromHandle.y, 2)
+        );
+        if (distance < minDistance) {
+          minDistance = distance;
+          bestFromHandle = fromHandle;
+          bestToHandle = toHandle;
+        }
+      }
+    }
+
+    const request: CreateElementRequest = {
+      type: 'Connector',
+      x: bestFromHandle.x,
+      y: bestFromHandle.y,
+      width: bestToHandle.x - bestFromHandle.x,
+      height: bestToHandle.y - bestFromHandle.y,
+      connectedFromElementId: fromElement.id,
+      connectedToElementId: toElement.id,
+      connectorStyle: 'straight',
+      borderColor: '#2196F3',
+      borderWidth: 3,
+      backgroundColor: 'transparent'
+    };
+
+    const element = await this.elementService.createElement(this.boardId, request).toPromise();
+    if (element) {
+      this.elements.push(element);
+      await this.realtimeService.notifyElementCreated(this.boardId, element);
+      this.saveHistoryState();
+      this.render();
+    }
+  }
+
   private async createNewElement(endPoint: Point): Promise<void> {
     // For lines, preserve direction by using signed width/height
     let width = endPoint.x - this.startPoint.x;
@@ -701,7 +870,14 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
     // Draw elements
     this.elements.forEach(element => {
-      this.drawElement(element, this.selectedElements.includes(element));
+      const isSelected = this.selectedElements.includes(element);
+      const isHovered = this.hoveredElement === element;
+      this.drawElement(element, isSelected);
+
+      // Draw connection handles for selected or hovered elements
+      if ((isSelected || isHovered) && this.currentTool === 'select') {
+        this.drawConnectionHandles(element);
+      }
     });
 
     // Draw in-progress drawing path (real-time feedback)
@@ -953,6 +1129,33 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
 
     this.ctx.strokeRect(minX - 2, minY - 2, width + 4, height + 4);
     this.ctx.setLineDash([]);
+  }
+
+  private drawConnectionHandles(element: BoardElement): void {
+    const handles = this.getConnectionHandles(element);
+    if (handles.length === 0) return;
+
+    const handleSize = 8; // Visual size of handle
+    const isSelected = this.selectedElements.includes(element);
+
+    this.ctx.save();
+
+    handles.forEach(handle => {
+      // Draw handle background (white circle)
+      this.ctx.fillStyle = '#FFFFFF';
+      this.ctx.beginPath();
+      this.ctx.arc(handle.x, handle.y, handleSize / 2, 0, 2 * Math.PI);
+      this.ctx.fill();
+
+      // Draw handle border
+      this.ctx.strokeStyle = isSelected ? '#2196F3' : '#757575';
+      this.ctx.lineWidth = 2;
+      this.ctx.beginPath();
+      this.ctx.arc(handle.x, handle.y, handleSize / 2, 0, 2 * Math.PI);
+      this.ctx.stroke();
+    });
+
+    this.ctx.restore();
   }
 
   private renderPreview(endPoint: Point): void {
