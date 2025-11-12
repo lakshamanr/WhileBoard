@@ -27,8 +27,11 @@
       "main.js",
       "preload.js",
       "frontend/**/*",
+      "api/**/*"
+    ],
+    "asarUnpack": [
       "api/**/*",
-      "database/**/*"
+      "frontend/**/*"
     ],
     "win": {
       "target": "nsis",
