@@ -57,7 +57,7 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   private textInput?: HTMLInputElement;
 
   // Connector state
-  private connectorStartElement?: BoardElement;
+  connectorStartElement?: BoardElement;
 
   constructor(
     private route: ActivatedRoute,
