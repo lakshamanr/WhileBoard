@@ -65,14 +65,14 @@ export class WhiteboardCanvasComponent implements OnInit, OnDestroy {
   private dragFromHandle?: { element: BoardElement; position: Point };
 
   // Snapping and alignment
-  private snapEnabled: boolean = true;
+  snapEnabled: boolean = true;
   private snapThreshold: number = 10;
   private alignmentGuides: Array<{ type: 'vertical' | 'horizontal'; position: number }> = [];
 
   // Mini-map
   private minimapSize: number = 150;
   private minimapPadding: number = 20;
-  private showMinimap: boolean = true;
+  showMinimap: boolean = true;
 
   constructor(
     private route: ActivatedRoute,
